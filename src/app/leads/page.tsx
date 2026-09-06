@@ -13,6 +13,10 @@ import {
   Bot,
   MessageCircle,
   Globe,
+  Copy,
+  Check,
+  MessageSquareText,
+  ListChecks,
 } from "lucide-react";
 import clsx from "clsx";
 import {
@@ -29,6 +33,7 @@ import {
   type LeadStatus,
 } from "@/lib/constants";
 import type { ApiLead, ApiWorkflow } from "@/lib/types";
+import { buildOpeningMessage, buildWorkflowExplanation } from "@/lib/pitch";
 import {
   ScoreRing,
   StatusChip,
@@ -291,6 +296,23 @@ function LeadDrawer({
 }) {
   const [notes, setNotes] = useState(lead.notes ?? "");
   const [confirmDel, setConfirmDel] = useState(false);
+  const [copiedMsg, setCopiedMsg] = useState(false);
+
+  const selectedWorkflow = workflows.find((w) => w.id === lead.workflowId) ?? null;
+  const openingMessage = buildOpeningMessage(lead, selectedWorkflow);
+  const explanation = selectedWorkflow
+    ? buildWorkflowExplanation(lead, selectedWorkflow)
+    : null;
+
+  async function copyOpeningMessage() {
+    try {
+      await navigator.clipboard.writeText(openingMessage);
+      setCopiedMsg(true);
+      setTimeout(() => setCopiedMsg(false), 2000);
+    } catch {
+      /* clipboard unavailable — user can still select the text manually */
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50">
@@ -444,6 +466,83 @@ function LeadDrawer({
               {lead.painPoint}
             </p>
           </section>
+
+          {/* Suggested opening message */}
+          <section>
+            <div className="mb-2.5 flex items-center justify-between">
+              <h3 className="text-[11.5px] font-bold text-white/45">
+                <span className="inline-flex items-center gap-1.5">
+                  <MessageSquareText className="size-3.5 text-emerald-300" />
+                  هقوله إيه في الشات
+                </span>
+              </h3>
+              <button
+                onClick={copyOpeningMessage}
+                className={clsx(
+                  "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-bold transition-colors",
+                  copiedMsg
+                    ? "border-lime-400/25 bg-lime-400/10 text-lime-300"
+                    : "border-line bg-white/[0.04] text-white/60 hover:bg-white/[0.08]",
+                )}
+              >
+                {copiedMsg ? (
+                  <>
+                    <Check className="size-3.5" />
+                    اتنسخت
+                  </>
+                ) : (
+                  <>
+                    <Copy className="size-3.5" />
+                    انسخ الرسالة
+                  </>
+                )}
+              </button>
+            </div>
+            <p className="whitespace-pre-line rounded-xl border border-line bg-white/[0.03] p-3.5 text-[12.5px] leading-6 text-white/60">
+              {openingMessage}
+            </p>
+            {lead.phone && (
+              <a
+                href={`https://wa.me/${lead.phone.replace(/\D/g, "")}?text=${encodeURIComponent(openingMessage)}`}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-emerald-400/25 bg-emerald-400/10 px-3.5 py-2 text-[12px] font-bold text-emerald-300 transition-colors hover:bg-emerald-400/20"
+              >
+                <MessageCircle className="size-3.5" />
+                ابعتها على واتساب دلوقتي
+              </a>
+            )}
+          </section>
+
+          {/* How the workflow will run for this specific lead */}
+          {explanation && (
+            <section>
+              <h3 className="mb-2.5 text-[11.5px] font-bold text-white/45">
+                <span className="inline-flex items-center gap-1.5">
+                  <ListChecks className="size-3.5 text-violet-300" />
+                  الورك فلو هيشتغل إزاي له
+                </span>
+              </h3>
+              <div className="space-y-3 rounded-xl border border-line bg-white/[0.03] p-3.5">
+                <p className="text-[12.5px] leading-6 text-white/60">
+                  {explanation.intro}
+                </p>
+                <ol className="space-y-2">
+                  {explanation.steps.map((step, i) => (
+                    <li key={i} className="flex items-start gap-2.5 text-[12.5px] leading-6 text-white/70">
+                      <span className="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-violet-400/15 text-[10.5px] font-bold text-violet-300">
+                        {i + 1}
+                      </span>
+                      <span>{step}</span>
+                    </li>
+                  ))}
+                </ol>
+                <p className="border-t border-line pt-3 text-[12.5px] font-semibold text-lime-300">
+                  {explanation.outro}
+                </p>
+              </div>
+            </section>
+          )}
 
           {/* Meta grid */}
           <section className="grid grid-cols-3 gap-2.5">
