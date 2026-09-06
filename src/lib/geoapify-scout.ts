@@ -21,6 +21,7 @@ import {
   firstTag,
   normalizeWebsite,
   normalizePhone,
+  normalizeInstagram,
   buildAddress,
   pickChannel,
   scoreTags,
@@ -173,13 +174,10 @@ export async function fetchGeoapifyProspects(
         businessName: name,
         contactName: firstTag(tags, ["contact:name", "operator", "owner"]) ?? "",
         phone: normalizePhone(
-          firstTag(tags, [
-            "contact:whatsapp",
-            "contact:mobile",
-            "phone",
-            "contact:phone",
-          ]),
+          firstTag(tags, ["contact:mobile", "phone", "contact:phone"]),
         ),
+        whatsapp: normalizePhone(firstTag(tags, ["contact:whatsapp"])),
+        instagram: normalizeInstagram(firstTag(tags, ["contact:instagram"])),
         website: normalizeWebsite(
           firstTag(tags, ["contact:website", "website", "url"]),
         ),
@@ -193,13 +191,18 @@ export async function fetchGeoapifyProspects(
     }
   });
 
+  // keep ONLY prospects with a real, actionable contact method — see the
+  // matching comment in real-scout.ts for why we no longer pad with
+  // contactless businesses just to hit the requested count.
   for (let i = prospects.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [prospects[i], prospects[j]] = [prospects[j], prospects[i]];
   }
-  const withContact = prospects.filter((p) => p.phone || p.website);
-  const withoutContact = prospects.filter((p) => !p.phone && !p.website);
-  const picked = [...withContact, ...withoutContact].slice(0, count);
-  if (!picked.length) throw new Error("no named businesses found (geoapify)");
+  const withContact = prospects.filter(
+    (p) => p.phone || p.whatsapp || p.instagram || p.website,
+  );
+  const picked = withContact.slice(0, count);
+  if (!picked.length)
+    throw new Error("no contactable businesses found (geoapify)");
   return picked;
 }

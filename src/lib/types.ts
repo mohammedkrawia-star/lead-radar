@@ -19,6 +19,8 @@ export interface ApiLead {
   listId: number | null;
   listName?: string | null;
   phone: string | null;
+  whatsapp: string | null;
+  instagram: string | null;
   website: string | null;
   address: string | null;
   source: string;

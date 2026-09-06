@@ -13,6 +13,7 @@ import {
   CircleDollarSign,
   Phone,
   Globe,
+  Camera,
   TriangleAlert,
   ListChecks,
 } from "lucide-react";
@@ -34,8 +35,6 @@ const SCAN_PHRASES = [
   "بنقيّم كل فرصة وبنطابقها مع أنسب ورك فلو…",
 ];
 
-type ScoutSource = "osm" | "simulated";
-
 export default function ScoutPage() {
   const [industry, setIndustry] = useState("any");
   const [city, setCity] = useState("any");
@@ -43,8 +42,8 @@ export default function ScoutPage() {
   const [scanning, setScanning] = useState(false);
   const [phrase, setPhrase] = useState(0);
   const [results, setResults] = useState<ApiLead[] | null>(null);
-  const [source, setSource] = useState<ScoutSource>("osm");
   const [cityUsed, setCityUsed] = useState<string>("");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [savedList, setSavedList] = useState<{ id: number; name: string } | null>(
     null,
   );
@@ -68,6 +67,7 @@ export default function ScoutPage() {
     setScanning(true);
     setResults(null);
     setSavedList(null);
+    setErrorMsg(null);
     const started = Date.now();
     try {
       const res = await fetch("/api/scout", {
@@ -78,12 +78,18 @@ export default function ScoutPage() {
       const data = await res.json();
       const minWait = 3000 - (Date.now() - started);
       if (minWait > 0) await new Promise((r) => setTimeout(r, minWait));
+      if (!res.ok || data.error) {
+        setResults(null);
+        setErrorMsg(
+          data.message ?? "حصل خطأ غير متوقع. جرب تاني بعد شوية.",
+        );
+        return;
+      }
       setResults(data.leads ?? []);
-      setSource(data.source === "simulated" ? "simulated" : "osm");
       setCityUsed(data.cityUsed ?? "");
       setSavedList(data.list ?? null);
     } catch {
-      setResults([]);
+      setErrorMsg("مقدرناش نوصل للسيرفر. اتأكد من الاتصال وجرب تاني.");
     } finally {
       setScanning(false);
     }
@@ -213,25 +219,31 @@ export default function ScoutPage() {
         </button>
       </div>
 
+      {/* Error */}
+      {errorMsg && (
+        <div className="mx-auto mt-10 flex max-w-2xl items-start gap-2.5 rounded-2xl border border-amber-400/20 bg-amber-400/[0.07] p-4 [animation:var(--animate-rise)]">
+          <TriangleAlert className="mt-0.5 size-4.5 shrink-0 text-amber-300" />
+          <p className="text-[12.5px] leading-6 text-amber-200/80">{errorMsg}</p>
+        </div>
+      )}
+
       {/* Results */}
       {results && (
         <div className="mx-auto mt-10 max-w-3xl [animation:var(--animate-rise)]">
-          {source === "osm" ? (
-            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <CheckCircle2 className="size-5 text-lime" />
-                <h2 className="text-[14.5px] font-bold">
-                  {results.length} أنشطة حقيقية في{" "}
-                  <span className="text-lime-300">{cityUsed}</span> — اتضافت
-                  لقاعدتك
-                </h2>
-              </div>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-lime/25 bg-lime-400/10 px-3 py-1 text-[12px] font-bold text-lime-300 tabular">
-                <CircleDollarSign className="size-3.5" />
-                {formatMoney(totalValue)} قيمة متوقعة
-              </span>
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <CheckCircle2 className="size-5 text-lime" />
+              <h2 className="text-[14.5px] font-bold">
+                {results.length} أنشطة حقيقية في{" "}
+                <span className="text-lime-300">{cityUsed}</span> — اتضافت
+                لقاعدتك
+              </h2>
             </div>
-          ) : null}
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-lime/25 bg-lime-400/10 px-3 py-1 text-[12px] font-bold text-lime-300 tabular">
+              <CircleDollarSign className="size-3.5" />
+              {formatMoney(totalValue)} قيمة متوقعة
+            </span>
+          </div>
           {savedList && (
             <p className="mb-5 flex items-center gap-2 text-[12.5px] text-white/45">
               <ListChecks className="size-3.5 text-brand-2" />
@@ -244,17 +256,6 @@ export default function ScoutPage() {
               </Link>
             </p>
           )}
-          {source !== "osm" && (
-            <div className="mb-5 flex items-start gap-2.5 rounded-2xl border border-amber-400/20 bg-amber-400/[0.07] p-4">
-              <TriangleAlert className="mt-0.5 size-4.5 shrink-0 text-amber-300" />
-              <p className="text-[12.5px] leading-6 text-amber-200/80">
-                مصدر البيانات الخارجي كان مشغولًا دلوقتي، فعرضنا نتائج محاكاة
-                مؤقتة لمدينة <b>{cityUsed}</b>. جرّب تاني بعد ثواني أو غيّر
-                المدينة/المجال.
-              </p>
-            </div>
-          )}
-
           <div className="grid gap-3.5 sm:grid-cols-2">
             {results.map((lead, i) => (
               <article
@@ -299,8 +300,9 @@ export default function ScoutPage() {
                     <ScoreRing score={lead.score} size={50} />
                   </div>
 
-                  {/* contact actions for real leads */}
-                  {(lead.phone || lead.website) && (
+                  {/* contact actions for real leads — only shown for a
+                      channel we actually have real data for */}
+                  {(lead.phone || lead.instagram || lead.website) && (
                     <div className="mb-3.5 flex flex-wrap gap-2">
                       {lead.phone && (
                         <a
@@ -309,6 +311,17 @@ export default function ScoutPage() {
                         >
                           <Phone className="size-3" />
                           <span dir="ltr">{lead.phone}</span>
+                        </a>
+                      )}
+                      {lead.instagram && (
+                        <a
+                          href={lead.instagram}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia-400/25 bg-fuchsia-400/10 px-3 py-1.5 text-[11px] font-bold text-fuchsia-300 transition-colors hover:bg-fuchsia-400/20"
+                        >
+                          <Camera className="size-3" />
+                          انستجرام
                         </a>
                       )}
                       {lead.website && (

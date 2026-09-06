@@ -17,6 +17,7 @@ import {
   Check,
   MessageSquareText,
   ListChecks,
+  Camera,
 } from "lucide-react";
 import clsx from "clsx";
 import {
@@ -359,32 +360,45 @@ function LeadDrawer({
             </div>
           </div>
 
-          {/* Real contact channels */}
-          {(lead.phone || lead.website) && (
+          {/* Real contact channels — only ever a button when we actually
+              have that channel's real data; a plain phone number is never
+              assumed to be WhatsApp. */}
+          {(lead.phone || lead.whatsapp || lead.instagram || lead.website) && (
             <section>
               <h3 className="mb-2.5 text-[11.5px] font-bold text-white/45">
                 تواصل الآن
               </h3>
               <div className="flex flex-wrap gap-2">
                 {lead.phone && (
-                  <>
-                    <a
-                      href={`tel:${lead.phone.replace(/[^+\d]/g, "")}`}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-lime/25 bg-lime-400/10 px-3.5 py-2 text-[12px] font-bold text-lime-300 transition-colors hover:bg-lime-400/20"
-                    >
-                      <Phone className="size-3.5" />
-                      <span dir="ltr">{lead.phone}</span>
-                    </a>
-                    <a
-                      href={`https://wa.me/${lead.phone.replace(/\D/g, "")}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-400/25 bg-emerald-400/10 px-3.5 py-2 text-[12px] font-bold text-emerald-300 transition-colors hover:bg-emerald-400/20"
-                    >
-                      <MessageCircle className="size-3.5" />
-                      واتساب
-                    </a>
-                  </>
+                  <a
+                    href={`tel:${lead.phone.replace(/[^+\d]/g, "")}`}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-lime/25 bg-lime-400/10 px-3.5 py-2 text-[12px] font-bold text-lime-300 transition-colors hover:bg-lime-400/20"
+                  >
+                    <Phone className="size-3.5" />
+                    <span dir="ltr">{lead.phone}</span>
+                  </a>
+                )}
+                {lead.whatsapp && (
+                  <a
+                    href={`https://wa.me/${lead.whatsapp.replace(/\D/g, "")}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-400/25 bg-emerald-400/10 px-3.5 py-2 text-[12px] font-bold text-emerald-300 transition-colors hover:bg-emerald-400/20"
+                  >
+                    <MessageCircle className="size-3.5" />
+                    واتساب
+                  </a>
+                )}
+                {lead.instagram && (
+                  <a
+                    href={lead.instagram}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-fuchsia-400/25 bg-fuchsia-400/10 px-3.5 py-2 text-[12px] font-bold text-fuchsia-300 transition-colors hover:bg-fuchsia-400/20"
+                  >
+                    <Camera className="size-3.5" />
+                    انستجرام
+                  </a>
                 )}
                 {lead.website && (
                   <a
@@ -501,9 +515,9 @@ function LeadDrawer({
             <p className="whitespace-pre-line rounded-xl border border-line bg-white/[0.03] p-3.5 text-[12.5px] leading-6 text-white/60">
               {openingMessage}
             </p>
-            {lead.phone && (
+            {lead.whatsapp ? (
               <a
-                href={`https://wa.me/${lead.phone.replace(/\D/g, "")}?text=${encodeURIComponent(openingMessage)}`}
+                href={`https://wa.me/${lead.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(openingMessage)}`}
                 target="_blank"
                 rel="noreferrer"
                 className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-emerald-400/25 bg-emerald-400/10 px-3.5 py-2 text-[12px] font-bold text-emerald-300 transition-colors hover:bg-emerald-400/20"
@@ -511,7 +525,18 @@ function LeadDrawer({
                 <MessageCircle className="size-3.5" />
                 ابعتها على واتساب دلوقتي
               </a>
-            )}
+            ) : lead.instagram ? (
+              <a
+                href={lead.instagram}
+                target="_blank"
+                rel="noreferrer"
+                onClick={copyOpeningMessage}
+                className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-fuchsia-400/25 bg-fuchsia-400/10 px-3.5 py-2 text-[12px] font-bold text-fuchsia-300 transition-colors hover:bg-fuchsia-400/20"
+              >
+                <Camera className="size-3.5" />
+                انسخ الرسالة وافتح إنستجرام
+              </a>
+            ) : null}
           </section>
 
           {/* How the workflow will run for this specific lead */}
@@ -662,6 +687,8 @@ function AddLeadDialog({
     painPoint: "",
     workflowId: "",
     phone: "",
+    whatsapp: "",
+    instagram: "",
     website: "",
   });
   const [busy, setBusy] = useState(false);
@@ -789,12 +816,28 @@ function AddLeadDialog({
               ))}
             </SelectInput>
           </Field>
-          <Field label="رقم التليفون / واتساب">
+          <Field label="رقم التليفون">
             <TextInput
               dir="ltr"
               value={form.phone}
               onChange={(e) => set("phone", e.target.value)}
               placeholder="+971 50 000 0000"
+            />
+          </Field>
+          <Field label="رقم واتساب (لو أكيد شغال)">
+            <TextInput
+              dir="ltr"
+              value={form.whatsapp}
+              onChange={(e) => set("whatsapp", e.target.value)}
+              placeholder="+971 50 000 0000"
+            />
+          </Field>
+          <Field label="لينك انستجرام">
+            <TextInput
+              dir="ltr"
+              value={form.instagram}
+              onChange={(e) => set("instagram", e.target.value)}
+              placeholder="https://instagram.com/..."
             />
           </Field>
           <Field label="الموقع الإلكتروني">

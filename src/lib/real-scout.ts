@@ -56,6 +56,8 @@ export interface RealProspect {
   businessName: string;
   contactName: string;
   phone: string | null;
+  whatsapp: string | null;
+  instagram: string | null;
   website: string | null;
   address: string | null;
   industry: string;
@@ -200,6 +202,24 @@ export function normalizePhone(raw: string | null): string | null {
   return v.length >= 6 ? v : null;
 }
 
+/**
+ * OSM's contact:instagram tag shows up in wildly inconsistent shapes:
+ * a bare handle ("some.cafe"), an "@handle", or a full profile URL with or
+ * without query params. Normalize all of them into one clickable profile
+ * link so the UI never has to guess.
+ */
+export function normalizeInstagram(raw: string | null): string | null {
+  if (!raw) return null;
+  let v = raw.split(";")[0].trim();
+  if (!v) return null;
+  v = v.replace(/^@/, "");
+  const urlMatch = v.match(/instagram\.com\/([^/?#\s]+)/i);
+  if (urlMatch) v = urlMatch[1];
+  v = v.replace(/^https?:\/\//i, "").replace(/\/$/, "");
+  if (!v || /^(instagram\.com)?$/i.test(v)) return null;
+  return `https://instagram.com/${v}`;
+}
+
 export function buildAddress(tags: Record<string, string>): string | null {
   const parts = [
     tags["addr:neighbourhood"],
@@ -212,16 +232,16 @@ export function buildAddress(tags: Record<string, string>): string | null {
   return unique.length ? unique.slice(0, 3).join("، ") : null;
 }
 
+// Only ever labeled "whatsapp" when OSM explicitly tags a WhatsApp contact
+// (contact:whatsapp) — a plain phone/mobile number is NOT assumed to be
+// WhatsApp-capable, since that used to send a "واتساب" button straight to
+// landlines and other numbers that were never actually on WhatsApp.
 export function pickChannel(tags: Record<string, string>): string {
   if (tags["contact:whatsapp"]) return "whatsapp";
   if (tags["contact:instagram"]) return "instagram";
-  if (
-    tags["phone"] ||
-    tags["contact:phone"] ||
-    tags["contact:mobile"]
-  )
-    return Math.random() > 0.4 ? "whatsapp" : "phone";
-  if (tags["contact:facebook"]) return "instagram";
+  if (tags["phone"] || tags["contact:phone"] || tags["contact:mobile"])
+    return "phone";
+  if (tags["contact:facebook"]) return "email";
   return "email";
 }
 
@@ -315,13 +335,10 @@ export async function fetchRealProspects(
       businessName: name,
       contactName: firstTag(tags, ["contact:name", "operator", "owner"]) ?? "",
       phone: normalizePhone(
-        firstTag(tags, [
-          "contact:whatsapp",
-          "contact:mobile",
-          "phone",
-          "contact:phone",
-        ]),
+        firstTag(tags, ["contact:mobile", "phone", "contact:phone"]),
       ),
+      whatsapp: normalizePhone(firstTag(tags, ["contact:whatsapp"])),
+      instagram: normalizeInstagram(firstTag(tags, ["contact:instagram"])),
       website: normalizeWebsite(
         firstTag(tags, ["contact:website", "website", "url"]),
       ),
@@ -334,15 +351,20 @@ export async function fetchRealProspects(
     });
   }
 
-  // shuffle, then prioritize prospects that have usable contact channels
+  // shuffle, then keep ONLY prospects with at least one real, actionable
+  // contact method — a business we found but can't actually reach isn't
+  // useful in a CRM meant for outreach, so it's dropped instead of padding
+  // the result count with dead ends.
   for (let i = prospects.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [prospects[i], prospects[j]] = [prospects[j], prospects[i]];
   }
-  const withContact = prospects.filter((p) => p.phone || p.website);
-  const withoutContact = prospects.filter((p) => !p.phone && !p.website);
-  const picked = [...withContact, ...withoutContact].slice(0, count);
-  if (!picked.length) throw new Error("no named businesses found");
+  const withContact = prospects.filter(
+    (p) => p.phone || p.whatsapp || p.instagram || p.website,
+  );
+  const picked = withContact.slice(0, count);
+  if (!picked.length)
+    throw new Error("no contactable businesses found (osm)");
   return picked;
 }
 

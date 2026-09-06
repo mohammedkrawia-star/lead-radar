@@ -69,6 +69,8 @@ export const leads = pgTable("leads", {
     onDelete: "set null",
   }),
   phone: text("phone"),
+  whatsapp: text("whatsapp"),
+  instagram: text("instagram"),
   website: text("website"),
   address: text("address"),
   source: varchar("source", { length: 16 }).notNull().default("manual"),

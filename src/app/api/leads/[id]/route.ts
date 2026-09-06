@@ -32,7 +32,14 @@ export async function PATCH(
   for (const key of allowedText) {
     if (key in body) patch[key] = String(body[key]);
   }
-  const nullableText = ["phone", "website", "address", "notes"] as const;
+  const nullableText = [
+    "phone",
+    "whatsapp",
+    "instagram",
+    "website",
+    "address",
+    "notes",
+  ] as const;
   for (const key of nullableText) {
     if (key in body) {
       patch[key] = body[key] === null || body[key] === "" ? null : String(body[key]);

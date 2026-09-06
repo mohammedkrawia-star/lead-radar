@@ -6,7 +6,7 @@ import {
   workflowFor,
 } from "@/lib/real-scout";
 import { fetchGeoapifyProspects } from "@/lib/geoapify-scout";
-import { generateProspect, INDUSTRY_INTEL } from "@/lib/scout-data";
+import { INDUSTRY_INTEL } from "@/lib/scout-data";
 import { CITIES, INDUSTRY_LABEL } from "@/lib/constants";
 import { eq, inArray } from "drizzle-orm";
 import { NextRequest } from "next/server";
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
   const wfRows = await db.select().from(workflows);
   const byName = new Map(wfRows.map((w) => [w.name, w]));
 
-  let source: "geoapify" | "osm" | "simulated" = "simulated";
+  let source: "geoapify" | "osm" = "osm";
   let realProspects: Awaited<ReturnType<typeof fetchRealProspects>> = [];
   const failureReasons: string[] = [];
 
@@ -94,71 +94,55 @@ export async function POST(req: NextRequest) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error("[scout] osm (nominatim/overpass) path failed:", msg);
       failureReasons.push(`osm: ${msg}`);
-      source = "simulated";
     }
+  }
+
+  // No fabricated fallback data anymore — if we can't get real businesses
+  // back from either provider, tell the caller plainly instead of quietly
+  // inserting made-up companies with fake names and contact info.
+  if (!realProspects.length) {
+    console.error(
+      `[scout] no real prospects for city="${cityUsed}". Reasons: ${failureReasons.join(" || ") || "no reasons captured"}`,
+    );
+    return Response.json(
+      {
+        error: "real-fetch-failed",
+        message:
+          "معرفناش نجيب عملاء حقيقيين دلوقتي — جرب مدينة أو مجال تاني، أو حاول تاني بعد شوية.",
+        debugReason: failureReasons,
+      },
+      { status: 502 },
+    );
   }
 
   const values: (typeof leads.$inferInsert)[] = [];
 
-  if (source === "geoapify" || source === "osm") {
-    for (const p of realProspects) {
-      const wfName = workflowFor(p.industry);
-      const wf = byName.get(wfName);
-      const setup = 60 * Math.round(3 + Math.random() * 4);
-      values.push({
-        businessName: p.businessName,
-        contactName: p.contactName,
-        contactRole: "",
-        industry: p.industry,
-        city: cityUsed,
-        channel: p.channel,
-        size: p.size,
-        painPoint: painFor(p.industry),
-        score: p.score,
-        status: "new",
-        dealValue: (wf?.price ?? 300) + setup,
-        workflowId: wf?.id ?? null,
-        listId: list.id,
-        phone: p.phone,
-        website: p.website,
-        address: p.address,
-        source,
-        notes: p.osmRef ? `OSM: ${p.osmRef}` : null,
-      });
-    }
-  } else {
-    // fallback — offline / no coverage: simulated prospects
-    const usedNames = new Set<string>();
-    for (let i = 0; i < 4; i++) {
-      const ind = industries[i % industries.length];
-      let p = generateProspect(ind, [cityUsed]);
-      let guard = 0;
-      while (
-        (usedNames.has(p.businessName) ||
-          exclude.has(p.businessName.trim().toLowerCase())) &&
-        guard++ < 6
-      ) {
-        p = generateProspect(ind, [cityUsed]);
-      }
-      usedNames.add(p.businessName);
-      const wf = byName.get(p.matchedWorkflow);
-      values.push({
-        businessName: p.businessName,
-        contactName: p.contactName,
-        contactRole: p.contactRole,
-        industry: p.industry,
-        city: p.city,
-        channel: p.channel,
-        size: p.size,
-        painPoint: p.painPoint,
-        score: p.score,
-        status: "new",
-        dealValue: (wf?.price ?? 300) + p.setupFee,
-        workflowId: wf?.id ?? null,
-        listId: list.id,
-        source: "simulated",
-      });
-    }
+  for (const p of realProspects) {
+    const wfName = workflowFor(p.industry);
+    const wf = byName.get(wfName);
+    const setup = 60 * Math.round(3 + Math.random() * 4);
+    values.push({
+      businessName: p.businessName,
+      contactName: p.contactName,
+      contactRole: "",
+      industry: p.industry,
+      city: cityUsed,
+      channel: p.channel,
+      size: p.size,
+      painPoint: painFor(p.industry),
+      score: p.score,
+      status: "new",
+      dealValue: (wf?.price ?? 300) + setup,
+      workflowId: wf?.id ?? null,
+      listId: list.id,
+      phone: p.phone,
+      whatsapp: p.whatsapp,
+      instagram: p.instagram,
+      website: p.website,
+      address: p.address,
+      source,
+      notes: p.osmRef ? `OSM: ${p.osmRef}` : null,
+    });
   }
 
   const inserted = await db.insert(leads).values(values).returning();
@@ -170,22 +154,11 @@ export async function POST(req: NextRequest) {
     }))
     .sort((a, b) => b.score - a.score);
 
-  if (source === "simulated") {
-    console.error(
-      `[scout] falling back to simulated data for city="${cityUsed}". Reasons: ${failureReasons.join(" || ") || "no reasons captured"}`,
-    );
-  }
-
   return Response.json({
     leads: payload,
     source,
     cityUsed,
     industries,
     list: { id: list.id, name: list.name },
-    // Only populated when real data failed — safe to ignore in the UI,
-    // useful in the browser network tab / Vercel logs for diagnosis.
-    ...(source === "simulated" && failureReasons.length
-      ? { debugReason: failureReasons }
-      : {}),
   });
 }
